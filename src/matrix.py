@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import scipy
 
 from tqdm.auto import tqdm
 
@@ -50,7 +51,7 @@ class ev_aggregator:
         return to_np(self.ev_maxs)
 
 
-class sparse_aggregator:
+class SparseAggregator:
     """
     keeps running list of coordinates of top p percent (or top n) sparse connections:
 
@@ -66,44 +67,84 @@ class sparse_aggregator:
         self.skip_diagonal = skip_diagonal
 
         if use_torch:
-            self.top_k = lambda values, k, axis: torch.topk(values, k, dim=axis)
+            self.top_k = lambda values, k, axis=0: torch.topk(values, k, dim=axis)
             self.backend = torch
         else:
             self.backend = np
-            raise NotImplementedError
-            self.top_k = lambda values, k, axis: np.partition(values, -k, axis=axis)[-k:]
+            self.top_k = lambda values, k, axis=0: (np.partition(values, -k, axis=axis)[-k:],
+                                                    np.argpartition(values, -k, axis=axis)[-k:])
 
-        self.compare_tv = self.backend.ones(0, **self.devp)
-        self.compare_ri = self.backend.ones(0, **self.devp)
-        self.compare_ci = self.backend.ones(0, **self.devp)
+        self.create_empty = lambda k=1: [self.backend.ones(0, **self.devp) for _ in range(k)]
+
+        self.min_tv = -self.backend.inf
+        self.cache_tv, self.cache_ri, self.cache_ci = [], [], []
+        self.compare_tv, self.compare_ri, self.compare_ci = self.create_empty(3)
+
+    def compare_cache(self):
+        """ """
+        backend = self.backend
+        self.compare_tv = backend.hstack(self.cache_tv + [self.compare_tv])
+        self.compare_ri = backend.hstack(self.cache_ri + [self.compare_ri])
+        self.compare_ci = backend.hstack(self.cache_ci + [self.compare_ci])
+
+        if len(self.compare_tv) > self.top_n:
+            # print("compare")
+            self.compare_tv, update_ti = self.top_k(self.compare_tv, self.top_n)
+            self.compare_ri = self.compare_ri[update_ti]
+            self.compare_ci = self.compare_ci[update_ti]
+
+            self.min_tv = self.compare_tv[-1]
+            self.cache_tv, self.cache_ri, self.cache_ci = [], [], []
 
     def __call__(self, A, B, a_index, b_index):
         """ """
         backend = self.backend
+        M_chunk = self.core_func(A, B, a_index, b_index)
 
+        chunk_tv = M_chunk.flatten()
+        chunk_ti = backend.where(chunk_tv > self.min_tv)[0]
+        if len(chunk_ti) == 0:
+            return
+
+        chunk_tv = chunk_tv[chunk_ti]
+        chunk_ri, chunk_ci = backend.unravel_index(chunk_ti, M_chunk.shape)
+        chunk_ri += a_index.start
+        chunk_ci += b_index.start
+
+        self.cache_tv.append(chunk_tv)
+        self.cache_ri.append(chunk_ri)
+        self.cache_ci.append(chunk_ci)
+
+        if sum(len(chunk) for chunk in self.cache_tv) > self.top_n:
+            self.compare_cache()
+
+    def results(self):
+        self.compare_cache()
+
+        assert len(self.cache_tv) == 0
+        assert len(self.compare_tv) == self.top_n
+
+        tv, ri, ci = to_np((self.compare_tv, self.compare_ri, self.compare_ci))
+        return scipy.sparse.csr_matrix((tv, (ri.astype(int), ci.astype(int))))
+
+    def core_func(self, A, B, a_index, b_index):
+        """ """
+        raise NotImplementedError
+
+
+class SparseCorrelator(SparseAggregator):
+    """ """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def core_func(self, A, B, a_index, b_index):
+        """ """
+        backend = self.backend
         M_chunk = backend.corrcoef(backend.hstack([A, B]).T)[:A.shape[1], A.shape[1]:] ** 2
         if a_index == b_index and self.skip_diagonal:
             M_chunk[backend.eye(M_chunk.shape[0], dtype=bool)] = -backend.inf
 
-        chunk_tv = M_chunk.flatten()
-        chunk_ti = backend.arange(len(chunk_tv), **self.devp)
-
-        chunk_ri, chunk_ci = backend.unravel_index(chunk_ti, M_chunk.shape)
-        chunk_ri = backend.arange(a_index.start, a_index.stop, **self.devp)[chunk_ri]
-        chunk_ci = backend.arange(b_index.start, b_index.stop, **self.devp)[chunk_ci]
-
-        self.compare_tv = backend.hstack([chunk_tv, self.compare_tv])
-        self.compare_ri = backend.hstack([chunk_ri, self.compare_ri])
-        self.compare_ci = backend.hstack([chunk_ci, self.compare_ci])
-
-        if len(self.compare_tv) > self.top_n:
-            self.compare_tv, update_ti = self.top_k(self.compare_tv, self.top_n, axis=0) # TODO: need axis?
-
-            self.compare_ri = self.compare_ri[update_ti]
-            self.compare_ci = self.compare_ci[update_ti]
-
-    def results(self):
-        return self.compare_tv, self.compare_ri, self.compare_ci
+        return M_chunk
 
 
 def block_analysis(data, aggregator_class, block_size=1000, use_torch=True, device="mps", **agg_params):
@@ -115,9 +156,10 @@ def block_analysis(data, aggregator_class, block_size=1000, use_torch=True, devi
 
     n_blocks = int(np.ceil(data.shape[1] / block_size))
 
-    overhang_size = data.shape[1] % (n_blocks - 1) + 1 if n_blocks > 1 else data.shape[1]
+    pbar = tqdm(total=n_blocks ** 2, desc=f'Running {aggregator_class.__name__} block analysis')
 
-    for a_count in tqdm(range(n_blocks), leave=True):
+    # for a_count in tqdm(range(n_blocks), leave=True):
+    for a_count in range(n_blocks):
         a_start = a_count * block_size
         a_n_items = block_size if a_count < n_blocks - 1 else data.shape[1] - a_start
         a_index = slice(a_start, a_start + a_n_items)
@@ -130,5 +172,7 @@ def block_analysis(data, aggregator_class, block_size=1000, use_torch=True, devi
             b_block = data[:, b_index]
 
             aggregator(a_block, b_block, a_index, b_index)
+            pbar.update(1)
+        # pbar.update(n_blocks)
     
     return aggregator.results()
