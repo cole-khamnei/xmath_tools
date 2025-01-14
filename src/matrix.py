@@ -14,10 +14,10 @@ def to_np(array):
     return array
 
 
-def to_torch(array, **devp):
+def to_torch(array, dtype="float32", **devp):
     """ """
     if not isinstance(array, torch.Tensor):
-        return torch.tensor(array.astype("float32"), **devp)
+        return torch.tensor(array.astype(dtype), **devp)
 
     return array
 
@@ -131,6 +131,36 @@ class SparseAggregator:
         """ """
         raise NotImplementedError
 
+    @classmethod
+    def run(cls, data, block_size=1000, use_torch=True, device="mps", dtype="float32", **agg_params):
+        """ """
+        # return block_analysis(data, cls, block_size=block_size, use_torch=use_torch,
+        #                       device=device, **agg_params)
+
+        if use_torch:
+            data = to_torch(data, device=device, dtype=dtype)
+        aggregator = cls(data, device=device, use_torch=use_torch, **agg_params)
+
+        n_blocks = int(np.ceil(data.shape[1] / block_size))
+        pbar = tqdm(total=(n_blocks * block_size) ** 2, desc=f'{cls.__name__} Block Analysis')
+        for a_count in range(n_blocks):
+            a_start = a_count * block_size
+            a_n_items = block_size if a_count < n_blocks - 1 else data.shape[1] - a_start
+            a_index = slice(a_start, a_start + a_n_items)
+            a_block = data[:, a_index]
+
+            for b_count in range(n_blocks):
+                b_start = b_count * block_size
+                b_n_items = block_size if b_count < n_blocks - 1 else data.shape[1] - b_start
+                b_index = slice(b_start, b_start + b_n_items)
+                b_block = data[:, b_index]
+
+                aggregator(a_block, b_block, a_index, b_index)
+                # pbar.update(1)
+                pbar.update(a_n_items * b_n_items)
+
+        return aggregator.results()
+
 
 class SparseCorrelator(SparseAggregator):
     """ """
@@ -140,39 +170,8 @@ class SparseCorrelator(SparseAggregator):
     def core_func(self, A, B, a_index, b_index):
         """ """
         backend = self.backend
-        M_chunk = backend.corrcoef(backend.hstack([A, B]).T)[:A.shape[1], A.shape[1]:] ** 2
+        M_chunk = backend.corrcoef(backend.hstack([A, B]).T)[:A.shape[1], A.shape[1]:]
         if a_index == b_index and self.skip_diagonal:
             M_chunk[backend.eye(M_chunk.shape[0], dtype=bool)] = -backend.inf
 
         return M_chunk
-
-
-def block_analysis(data, aggregator_class, block_size=1000, use_torch=True, device="mps", **agg_params):
-    """ """
-
-    if use_torch:
-        data = to_torch(data, device=device)
-    aggregator = aggregator_class(data, device=device, use_torch=use_torch, **agg_params)
-
-    n_blocks = int(np.ceil(data.shape[1] / block_size))
-
-    pbar = tqdm(total=n_blocks ** 2, desc=f'Running {aggregator_class.__name__} block analysis')
-
-    # for a_count in tqdm(range(n_blocks), leave=True):
-    for a_count in range(n_blocks):
-        a_start = a_count * block_size
-        a_n_items = block_size if a_count < n_blocks - 1 else data.shape[1] - a_start
-        a_index = slice(a_start, a_start + a_n_items)
-        a_block = data[:, a_index]
-    
-        for b_count in range(n_blocks):
-            b_start = b_count * block_size
-            b_n_items = block_size if b_count < n_blocks - 1 else data.shape[1] - b_start
-            b_index = slice(b_start, b_start + b_n_items)
-            b_block = data[:, b_index]
-
-            aggregator(a_block, b_block, a_index, b_index)
-            pbar.update(1)
-        # pbar.update(n_blocks)
-    
-    return aggregator.results()
