@@ -22,6 +22,16 @@ def to_torch(array, dtype="float32", **devp):
     return array
 
 
+def get_device(device_str=None):
+    if device_str:
+        return device_str
+    if torch.cuda.is_available():
+        return 'cuda'
+    if torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
+
+
 class ev_aggregator:
     def __init__(self, data, device, use_torch=True):
         self.size = data.shape[1]
@@ -56,10 +66,10 @@ class SparseAggregator:
     keeps running list of coordinates of top p percent (or top n) sparse connections:
 
     """
-    def __init__(self, data, device, use_torch=True, sparsity_percent=0.1, skip_diagonal=True):
+    def __init__(self, data, device=None, use_torch=True, sparsity_percent=0.1, skip_diagonal=True):
         self.size = data.shape[1]
-        self.device = device
-        self.devp = {"device": device} if use_torch else {}
+        self.device = get_device(device)
+        self.devp = {"device": self.device} if use_torch else {}
         self.use_torch = use_torch
 
         self.sparsity_frac = sparsity_percent / 100
@@ -132,17 +142,16 @@ class SparseAggregator:
         raise NotImplementedError
 
     @classmethod
-    def run(cls, data, block_size=1000, use_torch=True, device="mps", dtype="float32", **agg_params):
+    def run(cls, data, block_size=1000, use_torch=True, device=None, dtype="float32", **agg_params):
         """ """
-        # return block_analysis(data, cls, block_size=block_size, use_torch=use_torch,
-        #                       device=device, **agg_params)
+        device = get_device(device)
 
         if use_torch:
             data = to_torch(data, device=device, dtype=dtype)
         aggregator = cls(data, device=device, use_torch=use_torch, **agg_params)
 
         n_blocks = int(np.ceil(data.shape[1] / block_size))
-        pbar = tqdm(total=(n_blocks * block_size) ** 2, desc=f'{cls.__name__} Block Analysis')
+        pbar = tqdm(total=(n_blocks * block_size / 1000) ** 2, desc=f'{cls.__name__} Block Analysis')
         for a_count in range(n_blocks):
             a_start = a_count * block_size
             a_n_items = block_size if a_count < n_blocks - 1 else data.shape[1] - a_start
@@ -156,8 +165,7 @@ class SparseAggregator:
                 b_block = data[:, b_index]
 
                 aggregator(a_block, b_block, a_index, b_index)
-                # pbar.update(1)
-                pbar.update(a_n_items * b_n_items)
+                pbar.update(a_n_items * b_n_items // 1000 ** 2)
 
         return aggregator.results()
 
