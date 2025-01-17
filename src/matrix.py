@@ -117,13 +117,14 @@ class ev_aggregator:
 class BlockAnalysis:
     """
     """
-    def __init__(self, data, device=None, use_torch=True, skip_diagonal=True):
+    def __init__(self, data, device=None, use_torch=True, symmetric=True, skip_diagonal=True):
         self.size = data.shape[1]
         self.shape = (data.shape[1], data.shape[1])
         self.device = get_device(device)
         self.devp = {"device": self.device} if use_torch else {}
         self.use_torch = use_torch
         self.skip_diagonal = skip_diagonal
+        self.symmetric=symmetric
 
         self.backend = torch if use_torch else np
 
@@ -137,9 +138,13 @@ class BlockAnalysis:
 
     @classmethod
     def run(cls, data, mask=None, exclude_index=None,
-            block_size=4_000, use_torch=True,
+            block_size=4_000, use_torch=True, symmetric=False,
             device=None, dtype="float32", **agg_params):
-        """ """
+        """
+        TODO: added second data matrix and scan through both matrices
+        TODO: add symmetry argument that scans through only half of matrix
+
+        """
         device = get_device(device)
 
         if use_torch:
@@ -148,17 +153,22 @@ class BlockAnalysis:
             if exclude_index is not None:
                 exclude_index = to_torch(exclude_index, device=device, dtype="float16")
 
-        aggregator = cls(data, device=device, use_torch=use_torch, **agg_params)
+        aggregator = cls(data, device=device, use_torch=use_torch, symmetric=symmetric, **agg_params)
 
         n_blocks = int(np.ceil(data.shape[1] / block_size))
-        pbar = tqdm(total=(n_blocks * block_size / 1000) ** 2, desc=f'{cls.__name__} Block Analysis')
+
+        total_blocks = n_blocks * (n_blocks + 1) // 2 if symmetric else n_blocks ** 2
+        pbar = tqdm(total=total_blocks * (block_size / 1000) ** 2, desc=f'{cls.__name__} Block Analysis')
+
         for a_count in range(n_blocks):
             a_start = a_count * block_size
             a_n_items = block_size if a_count < n_blocks - 1 else data.shape[1] - a_start
             a_index = slice(a_start, a_start + a_n_items)
             a_block = data[:, a_index]
 
-            for b_count in range(n_blocks):
+            b_count_iter = range(a_count) if symmetric else range(n_blocks)
+
+            for b_count in b_count_iter:
                 b_start = b_count * block_size
                 b_n_items = block_size if b_count < n_blocks - 1 else data.shape[1] - b_start
                 b_index = slice(b_start, b_start + b_n_items)
@@ -167,7 +177,7 @@ class BlockAnalysis:
                 aggregator(a_block, b_block, a_index, b_index, mask=mask, exclude_index=exclude_index)
                 pbar.update(a_n_items * b_n_items // 1000 ** 2)
     
-        pbar.set_postfix(remaining=pbar.total - pbar.n)
+        pbar.update(pbar.total - pbar.n)
         pbar.close()
         return aggregator.results()
 
@@ -185,7 +195,11 @@ class SparseAggregator(BlockAnalysis):
         super().__init__(*args, **kwargs)
 
         self.sparsity_frac = sparsity_percent / 100
-        self.top_n = int(np.ceil(self.size ** 2 * self.sparsity_frac))
+
+        if self.symmetric:
+            self.top_n = int(np.ceil(self.size ** 2 * self.sparsity_frac)) // 2
+        else:
+            self.top_n = int(np.ceil(self.size ** 2 * self.sparsity_frac))
 
         if kwargs["use_torch"]:
             self.top_k = lambda values, k, axis=0: torch.topk(values, k, dim=axis)
@@ -198,6 +212,7 @@ class SparseAggregator(BlockAnalysis):
         self.min_tv = -self.backend.inf
         self.cache_tv, self.cache_ri, self.cache_ci = [], [], []
         self.compare_tv, self.compare_ri, self.compare_ci = self.create_empty(3)
+        self.diag_symmetry_index = self.backend.torch.triu_indices(self.size, self.size, offset=1)
 
     def compare_cache(self):
         """ """
@@ -239,6 +254,10 @@ class SparseAggregator(BlockAnalysis):
             return
 
         M_chunk = self.core_func(A, B, a_index, b_index)
+
+        if self.symmetric and a_index == b_index:
+            threshold_chunk_tv_index &= self.diag_symmetry_index
+
         chunk_tv = M_chunk.flatten()
         threshold_chunk_tv_index &= chunk_tv > self.min_tv
 
@@ -266,6 +285,10 @@ class SparseAggregator(BlockAnalysis):
         assert len(self.compare_tv) == self.top_n
 
         tv, ri, ci = to_np((self.compare_tv, self.compare_ri, self.compare_ci))
+
+        if self.symmetric:
+            tv, ri, ci = np.hstack([tv, tv]), np.hstack([ri, ci]), np.hstack([ci, ri])
+
         return scipy.sparse.csr_matrix((tv, (ri.astype(int), ci.astype(int))), shape=self.shape)
 
 
