@@ -32,42 +32,42 @@ def main():
     print(f"BLOCK SIZE :: {block_size}")
     print(voxel_data.shape)
 
-    # sc = tmt.matrix.Runner.run(voxel_data[:, :],
-    #                                      mask=geodesic_mask, exclude_index=subcortex_index,
-    #                                      block_size=block_size)
-
-    # assert False
-    sc = tmt.matrix.SparseCorrelator.run(voxel_data[:, :],
+    sc = tmt.matrix.Runner.run(voxel_data[:, :],
                                          mask=geodesic_mask, exclude_index=subcortex_index,
-                                         sparsity_percent=0.1,
                                          block_size=block_size)
 
-    from infomap import Infomap
+    # # assert False
+    # sc = tmt.matrix.SparseCorrelator.run(voxel_data[:, :],
+    #                                      mask=geodesic_mask, exclude_index=subcortex_index,
+    #                                      sparsity_percent=0.1,
+    #                                      block_size=block_size)
 
-    # Create the Infomap instance
-    infomap = Infomap(two_level=True, num_trials=1)
+    # from infomap import Infomap
 
-    # Add edges from the sparse matrix
-    row, col = sc.nonzero()
-    for r, c in zip(row, col):
-        weight = sc[r, c]
-        infomap.add_link(r, c, weight=weight)
+    # # Create the Infomap instance
+    # infomap = Infomap(two_level=True, num_trials=1)
 
-    # Run the Infomap algorithm
-    infomap.run()
+    # # Add edges from the sparse matrix
+    # row, col = sc.nonzero()
+    # for r, c in zip(row, col):
+    #     weight = sc[r, c]
+    #     infomap.add_link(r, c, weight=weight)
 
-    # Get the partition
-    partition = infomap.get_modules()
+    # # Run the Infomap algorithm
+    # infomap.run()
 
-    print(type(partition))
-    print(len(partition))
+    # # Get the partition
+    # partition = infomap.get_modules()
 
-    index = np.array(list(partition.keys()))
-    values = np.array(list(partition.values()))
+    # print(type(partition))
+    # print(len(partition))
 
-    print(index, len(index))
-    print(values, len(values))
-    np.save(SAMPLE_PARTITION_PATH, [index, values])
+    # index = np.array(list(partition.keys()))
+    # values = np.array(list(partition.values()))
+
+    # print(index, len(index))
+    # print(values, len(values))
+    # np.save(SAMPLE_PARTITION_PATH, [index, values])
 
 
 if __name__ == '__main__':

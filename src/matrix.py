@@ -4,6 +4,10 @@ import scipy
 
 from tqdm.auto import tqdm
 
+# ----------------------------------------------------------------------------# 
+# -------------------          Torch Helper Tools          -------------------# 
+# ----------------------------------------------------------------------------# 
+
 
 def to_np(array):
     """ """
@@ -27,6 +31,34 @@ def to_torch(array, dtype="float32", **devp):
     return array
 
 
+def get_device(device_str=None):
+    """ """
+    if device_str:
+        return device_str
+    if torch.cuda.is_available():
+        return 'cuda'
+    if torch.backends.mps.is_available():
+        return 'mps'
+    return 'cpu'
+
+
+def torch_corr(a, b):
+    """ """
+    a, b = a.T, b.T
+    return torch.matmul(a, b.T) / (torch.norm(a, dim=1, keepdim=True) * torch.norm(b, dim=1))
+
+
+def np_corr(a, b):
+    """ """
+    a, b = a.T, b.T
+    return np.matmul(a, b.T) / (np.linalg.norm(a, axis=1, keepdims=True) * np.linalg.norm(b, axis=1))
+
+
+# ----------------------------------------------------------------------------# 
+# -------------------          Scipy Sparse Tools          -------------------# 
+# ----------------------------------------------------------------------------# 
+
+
 def get_nnz_safe(array):
     """ """
     if scipy.sparse.issparse(array):
@@ -40,14 +72,9 @@ def to_array(arr):
     return arr.toarray() if scipy.sparse.issparse(arr) else arr
 
 
-def get_device(device_str=None):
-    if device_str:
-        return device_str
-    if torch.cuda.is_available():
-        return 'cuda'
-    if torch.backends.mps.is_available():
-        return 'mps'
-    return 'cpu'
+# ----------------------------------------------------------------------------# 
+# --------------------         Old Ev_aggregator          --------------------# 
+# ----------------------------------------------------------------------------# 
 
 
 class ev_aggregator:
@@ -77,6 +104,14 @@ class ev_aggregator:
 
     def results(self):
         return to_np(self.ev_maxs)
+
+
+# ----------------------------------------------------------------------------# 
+# -----------------           Bock Analysis Module           -----------------# 
+# ----------------------------------------------------------------------------# 
+
+
+# TODO: consider turning into functional versional rather than objects?
 
 
 class BlockAnalysis:
@@ -135,6 +170,10 @@ class BlockAnalysis:
         pbar.set_postfix(remaining=pbar.total - pbar.n)
         pbar.close()
         return aggregator.results()
+
+# ----------------------------------------------------------------------------# 
+# -                Specific Aggregator And Correlator Classes                -# 
+# ----------------------------------------------------------------------------# 
 
 
 class SparseAggregator(BlockAnalysis):
@@ -230,18 +269,6 @@ class SparseAggregator(BlockAnalysis):
         return scipy.sparse.csr_matrix((tv, (ri.astype(int), ci.astype(int))), shape=self.shape)
 
 
-def torch_corr(a, b):
-    """ """
-    a, b = a.T, b.T
-    return torch.matmul(a, b.T) / (torch.norm(a, dim=1, keepdim=True) * torch.norm(b, dim=1))
-
-
-def np_corr(a, b):
-    """ """
-    a, b = a.T, b.T
-    return np.matmul(a, b.T) / (np.linalg.norm(a, axis=1, keepdims=True) * np.linalg.norm(b, axis=1)) 
-
-
 class SparseCorrelator(SparseAggregator):
     """ """
     def __init__(self, *args, **kwargs):
@@ -279,3 +306,8 @@ class Runner(BlockAnalysis):
 
     def results(self):
         return None
+
+
+# ----------------------------------------------------------------------------# 
+# --------------------                End                 --------------------# 
+# ----------------------------------------------------------------------------#
