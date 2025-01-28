@@ -4,6 +4,8 @@ import scipy
 
 from tqdm.auto import tqdm
 
+from . import utils
+
 # ----------------------------------------------------------------------------# 
 # -----------------           Bock Analysis Module           -----------------# 
 # ----------------------------------------------------------------------------# 
@@ -15,26 +17,18 @@ from tqdm.auto import tqdm
 class BlockAnalysis:
     """
     """
-    def __init__(self, data, device=None, backend="torch", symmetric=True, skip_diagonal=True):
+    def __init__(self, data, backend="torch", device=None, symmetric=True, skip_diagonal=True):
         self.size = data.shape[1]
         self.shape = (data.shape[1], data.shape[1])
         
         #TODO: refactor device handling
         self.backend = utils.get_backend(backend)
-        self.device_info = utils.get_devp(backend, device)
+        self.device_info = utils.get_device_info(backend, device)
 
         self.skip_diagonal = skip_diagonal
         self.symmetric = symmetric
 
         self.create_empty = lambda k=1: [self.backend.ones(0, **self.device_info) for _ in range(k)]
-
-    def core_func(self, A, B, a_index, b_index):
-        """ """
-        raise NotImplementedError
-
-    def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
-        """ """
-        raise NotImplementedError
 
     def get_mask_chunk_index(self, mask, a_index, b_index, select_index):
         """ """
@@ -43,7 +37,7 @@ class BlockAnalysis:
             if get_nnz_safe(mask_chunk) > 0:
                 mask_flat = ~sparse_to_array(mask_chunk.astype(bool)).ravel()
                 # TODO: move to_backend to a to_backend_array() which creates either np or torch
-                mask_flat = to_backend(mask_flat, dtype=bool, **self.device_info)
+                mask_flat = utils.to_backend(self.backend, mask_flat, dtype=bool, **self.device_info)
                 select_index &= mask_flat
 
         return select_index
@@ -60,8 +54,9 @@ class BlockAnalysis:
         return select_index
 
     @classmethod
-    def run(cls, data, mask=None, exclude_index=None, block_size=4_000, backend="torch", symmetric=False,
-            device=None, dtype="float32", **agg_params):
+    def run(cls, data, mask=None, exclude_index=None, block_size=4_000,
+            backend="torch", device=None,
+            symmetric=False, dtype="float32", **block_params):
         """
         TODO: added second data matrix and scan through both matrices
         TODO: add symmetry argument that scans through only half of matrix
@@ -70,17 +65,17 @@ class BlockAnalysis:
         device = get_device(device)
 
         if use_torch:
-            data = to_backend(data, device=device, dtype=dtype)
+            data = utils.to_backend(self.backend, data, dtype=dtype, **self.device_info)
 
             if exclude_index is not None:
-                exclude_index = to_backend(exclude_index, device=device, dtype="float16")
+                exclude_index = utils.to_backend(self.backend, exclude_index, dtype="float16", **self.device_info)
 
         if symmetric and mask is not None:
             if get_nnz_safe(mask != mask.T) == 0:
                 print("Mask is not symmetric, cannot use symmetric acceleration.")
                 symmetric = False
 
-        aggregator = cls(data, device=device, use_torch=use_torch, symmetric=symmetric, **agg_params)
+        aggregator = cls(data, backend=backend, device=device, symmetric=symmetric, **block_params)
 
         n_blocks = int(np.ceil(data.shape[1] / block_size))
 
@@ -107,6 +102,14 @@ class BlockAnalysis:
         pbar.update(pbar.total - pbar.n)
         pbar.close()
         return aggregator.results()
+
+    def core_func(self, A, B, a_index, b_index):
+        """ """
+        raise NotImplementedError
+
+    def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
+        """ """
+        raise NotImplementedError
 
 # ----------------------------------------------------------------------------# 
 # --------------------                End                 --------------------# 
