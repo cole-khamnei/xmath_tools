@@ -23,10 +23,15 @@ GEODESIC_MASK_PATH = os.path.join(DIST_DIR, f"geodesic_mask_10.npz")
 # \section main
 
 def main():
-    voxel_data = np.load(SAMPLE_DTSERIES_PATH)
 
-    subcortex_index = np.load(SUBCORTEX_MASK_PATH)
-    geodesic_mask = scipy.sparse.load_npz(GEODESIC_MASK_PATH)
+    if os.path.exists(SAMPLE_DTSERIES_PATH):
+        voxel_data = np.load(SAMPLE_DTSERIES_PATH)
+        subcortex_index = np.load(SUBCORTEX_MASK_PATH)
+        geodesic_mask = scipy.sparse.load_npz(GEODESIC_MASK_PATH)
+
+    else:
+        voxel_data = np.random.randn(900, 91_282)
+        subcortex_index, geodesic_mask = None, None
 
     block_size = 5_000
     print(f"BLOCK SIZE :: {block_size}")

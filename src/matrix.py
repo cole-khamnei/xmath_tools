@@ -372,7 +372,11 @@ class Runner(BlockAnalysis):
     def results(self):
         return None
 
-#\section threshold aggregator
+
+# ----------------------------------------------------------------------------# 
+# -----------------           Threshold Aggregator           -----------------# 
+# ----------------------------------------------------------------------------# 
+
 
 class ThresholdAggregator(BlockAnalysis):
     """
