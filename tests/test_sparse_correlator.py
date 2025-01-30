@@ -24,27 +24,46 @@ GEODESIC_MASK_PATH = os.path.join(DIST_DIR, f"geodesic_mask_10.npz")
 
 def main():
 
-    if os.path.exists(SAMPLE_DTSERIES_PATH):
+    USE_SYNTHETIC = True
+
+    if os.path.exists(SAMPLE_DTSERIES_PATH) and not USE_SYNTHETIC:
         voxel_data = np.load(SAMPLE_DTSERIES_PATH)
         subcortex_index = np.load(SUBCORTEX_MASK_PATH)
         geodesic_mask = scipy.sparse.load_npz(GEODESIC_MASK_PATH)
 
     else:
         voxel_data = np.random.randn(900, 91_282)
-        subcortex_index, geodesic_mask = None, None
+    
+    subcortex_index, geodesic_mask = None, None
 
     block_size = 5_000
     print(f"BLOCK SIZE :: {block_size}")
     print(voxel_data.shape)
 
+    backend = "torch"
+    # backend = "numpy"
+
+    # sc = tmt.block_aggregators.Runner.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
+    #                                      block_size=block_size, symmetric=True, backend=backend)
+
+    # sc = tmt.SparseCorrelator.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
+    #                               block_size=block_size, symmetric=True, backend=backend)
+
+    sc = tmt.ThresholdCorrelator.run(voxel_data[:, :], threshold=0.1, mask=geodesic_mask, exclude_index=subcortex_index,
+                                  block_size=block_size, symmetric=True, backend=backend)
+
+
     # sc = tmt.matrix.Runner.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
     #                            block_size=block_size, symmetric=True)
 
     # assert False
-    sc = tmt.matrix.SparseCorrelator.run(voxel_data[:, :], symmetric=True,
-                                         mask=geodesic_mask, exclude_index=subcortex_index,
-                                         sparsity_percent=0.1,
-                                         block_size=block_size)
+
+
+
+    # sc = tmt.matrix.SparseCorrelator.run(voxel_data[:, :], symmetric=True,
+    #                                      mask=geodesic_mask, exclude_index=subcortex_index,
+    #                                      sparsity_percent=0.1,
+    #                                      block_size=block_size)
 
     # from infomap import Infomap
 

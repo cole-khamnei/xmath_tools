@@ -5,8 +5,12 @@ import scipy
 from tqdm.auto import tqdm
 
 from . import block_analysis
+from . import utils
 
-# \section runner
+# ----------------------------------------------------------------------------# 
+# --------------------               Runner               --------------------# 
+# ----------------------------------------------------------------------------# 
+
 
 class Runner(block_analysis.BlockAnalysis):
     """ 
@@ -14,11 +18,11 @@ class Runner(block_analysis.BlockAnalysis):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.corr_func = utils.get_corr_func(self.backend)
+        self.corr_func = utils.backend_corr
 
     def core_func(self, A, B, a_index, b_index):
         """ """
-        M_chunk = self.corr_func(A, B)
+        M_chunk = self.corr_func(self.backend, A, B)
         if a_index == b_index and self.skip_diagonal:
             M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = -self.backend.inf
 
@@ -55,13 +59,15 @@ class SparseAggregator(block_analysis.BlockAnalysis):
         else:
             self.top_n = int(np.ceil(n_items * self.sparsity_frac))
 
-        if kwargs["use_torch"]:
+        if utils.check_backend(kwargs["backend"], "torch"):
             self.top_k = lambda values, k, axis=0: torch.topk(values, k, dim=axis)
-        else:
+        elif utils.check_backend(kwargs["backend"], "numpy"):
             self.top_k = lambda values, k, axis=0: (np.partition(values, -k, axis=axis)[-k:],
                                                     np.argpartition(values, -k, axis=axis)[-k:])
+        else:
+            raise NotImplementedError
 
-        self.create_empty = lambda k=1: [self.backend.ones(0, **self.devp) for _ in range(k)]
+        self.create_empty = lambda k=1: [self.backend.ones(0, **self.device_info) for _ in range(k)]
 
         self.min_tv = -self.backend.inf
         self.cache_tv, self.cache_ri, self.cache_ci = [], [], []
@@ -85,7 +91,7 @@ class SparseAggregator(block_analysis.BlockAnalysis):
         """ """
         backend = self.backend
 
-        threshold_chunk_tv_index = backend.ones(A.shape[1] * B.shape[1], dtype=bool, **self.devp)
+        threshold_chunk_tv_index = backend.ones(A.shape[1] * B.shape[1], dtype=bool, **self.device_info)
         if exclude_index is not None:
             a_exclude = exclude_index[a_index]
             b_exclude = exclude_index[b_index]
@@ -97,7 +103,7 @@ class SparseAggregator(block_analysis.BlockAnalysis):
             mask_chunk = mask[a_index, b_index]
             if get_nnz_safe(mask_chunk) > 0:
                 mask_flat = ~sparse_to_array(mask_chunk.astype(bool)).ravel()
-                mask_flat = to_torch(mask_flat, dtype=bool, **self.devp)
+                mask_flat = utils.to_backend(backend,mask_flat, dtype=bool, **self.device_info)
                 threshold_chunk_tv_index &= mask_flat
 
         if not threshold_chunk_tv_index.any():
@@ -136,7 +142,7 @@ class SparseAggregator(block_analysis.BlockAnalysis):
         assert len(self.cache_tv) == 0
         # assert len(self.compare_tv) == self.top_n
 
-        tv, ri, ci = to_np((self.compare_tv, self.compare_ri, self.compare_ci))
+        tv, ri, ci = utils.to_np((self.compare_tv, self.compare_ri, self.compare_ci))
         if self.symmetric:
             non_diag_index = ri != ci
             tv = np.hstack([tv, tv[non_diag_index]])
@@ -167,7 +173,7 @@ class ThresholdAggregator(block_analysis.BlockAnalysis):
         backend = self.backend
 
         # TODO: move preselection select index generation to blockanalysis method
-        select_index = backend.ones(A.shape[1] * B.shape[1], dtype=bool, **self.devp)
+        select_index = backend.ones(A.shape[1] * B.shape[1], dtype=bool, **self.device_info)
         select_index = self.get_mask_chunk_index(mask, a_index, b_index, select_index)
         select_index = self.get_exclude_chunk_index(exclude_index, a_index, b_index, select_index)
 
@@ -202,7 +208,7 @@ class ThresholdAggregator(block_analysis.BlockAnalysis):
         self.cache_ri = self.backend.hstack(self.cache_ri)
         self.cache_ci = self.backend.hstack(self.cache_ci)
 
-        tv, ri, ci = to_np((self.cache_tv, self.cache_ri, self.cache_ci))
+        tv, ri, ci = utils.to_np((self.cache_tv, self.cache_ri, self.cache_ci))
         if self.symmetric:
             non_diag_index = ri != ci
             tv = np.hstack([tv, tv[non_diag_index]])

@@ -30,29 +30,6 @@ class BlockAnalysis:
 
         self.create_empty = lambda k=1: [self.backend.ones(0, **self.device_info) for _ in range(k)]
 
-    def get_mask_chunk_index(self, mask, a_index, b_index, select_index):
-        """ """
-        if mask is not None:
-            mask_chunk = mask[a_index, b_index]
-            if get_nnz_safe(mask_chunk) > 0:
-                mask_flat = ~sparse_to_array(mask_chunk.astype(bool)).ravel()
-                # TODO: move to_backend to a to_backend_array() which creates either np or torch
-                mask_flat = utils.to_backend(self.backend, mask_flat, dtype=bool, **self.device_info)
-                select_index &= mask_flat
-
-        return select_index
-
-    def get_exclude_chunk_index(self, exclude_index, a_index, b_index, select_index):
-        """ """
-        if exclude_index is not None:
-            a_exclude = exclude_index[a_index]
-            b_exclude = exclude_index[b_index]
-
-            exclude_chunk = a_exclude.reshape(-1, 1) @ b_exclude.reshape(1, -1)
-            select_index &= (exclude_chunk == 0).flatten()
-
-        return select_index
-
     @classmethod
     def run(cls, data, mask=None, exclude_index=None, block_size=4_000,
             backend="torch", device=None,
@@ -62,20 +39,18 @@ class BlockAnalysis:
         TODO: add symmetry argument that scans through only half of matrix
 
         """
-        device = get_device(device)
 
-        if use_torch:
-            data = utils.to_backend(self.backend, data, dtype=dtype, **self.device_info)
+        aggregator = cls(data, backend=backend, device=device, symmetric=symmetric, **block_params)
+        device_info = utils.get_device_info(backend, device)
 
-            if exclude_index is not None:
-                exclude_index = utils.to_backend(self.backend, exclude_index, dtype="float16", **self.device_info)
+        data = utils.to_backend(backend, data, dtype=dtype, **device_info)
+        if exclude_index is not None:
+            exclude_index = utils.to_backend(backend, exclude_index, dtype="float16", **device_info)
 
         if symmetric and mask is not None:
             if get_nnz_safe(mask != mask.T) == 0:
                 print("Mask is not symmetric, cannot use symmetric acceleration.")
                 symmetric = False
-
-        aggregator = cls(data, backend=backend, device=device, symmetric=symmetric, **block_params)
 
         n_blocks = int(np.ceil(data.shape[1] / block_size))
 
@@ -102,6 +77,29 @@ class BlockAnalysis:
         pbar.update(pbar.total - pbar.n)
         pbar.close()
         return aggregator.results()
+
+    def get_mask_chunk_index(self, mask, a_index, b_index, select_index):
+        """ """
+        if mask is not None:
+            mask_chunk = mask[a_index, b_index]
+            if get_nnz_safe(mask_chunk) > 0:
+                mask_flat = ~sparse_to_array(mask_chunk.astype(bool)).ravel()
+                # TODO: move to_backend to a to_backend_array() which creates either np or torch
+                mask_flat = utils.to_backend(self.backend, mask_flat, dtype=bool, **self.device_info)
+                select_index &= mask_flat
+
+        return select_index
+
+    def get_exclude_chunk_index(self, exclude_index, a_index, b_index, select_index):
+        """ """
+        if exclude_index is not None:
+            a_exclude = exclude_index[a_index]
+            b_exclude = exclude_index[b_index]
+
+            exclude_chunk = a_exclude.reshape(-1, 1) @ b_exclude.reshape(1, -1)
+            select_index &= (exclude_chunk == 0).flatten()
+
+        return select_index
 
     def core_func(self, A, B, a_index, b_index):
         """ """

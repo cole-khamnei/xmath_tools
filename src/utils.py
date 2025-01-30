@@ -43,17 +43,23 @@ def assert_valid_backend(backend: Union[str, Module]) -> None:
     assert backend_name in VALID_BACKENDS, f"Invalid backend '{backend_name}', valid options are {VALID_BACKENDS.keys()}"
 
 
+def check_backend(backend: Union[str, Module], name) -> bool:
+    """ """
+    backend_name = get_backend_name(backend)
+    return backend_name == name
+
+
 def get_backend(backend: Union[str, Module]) -> Module:
     """ """
     
     assert_valid_backend(backend)
     if isinstance(backend, str):
-        return VALID_BACKENDS[backend_name]
+        return VALID_BACKENDS[backend]
 
     return backend
 
 
-def get_device_info(backend: Union[str, Module], device=None) -> dict:
+def get_device_info(backend: Union[str, Module], device) -> dict:
     """ """
 
     assert_valid_backend(backend)
@@ -68,16 +74,19 @@ def get_device_info(backend: Union[str, Module], device=None) -> dict:
 
     elif backend_name == "mlx":
         device = mx.gpu if device is None else device
-        device = mx.cpu if device.lower() == "cpu" else mx.gpu if isinstance(device, str) else device
-        return {"stream": device}
+        if isinstance(device, str):
+            device = mx.cpu if device.lower() == "cpu" else mx.gpu
+
+        # TODO: Arrays are shared in MLX, so no need to move to gpu, however, need to specify stream
+        return {}
+        # return {"stream": device}
     
-    raise ValueError, backend
+    raise NotImplementedError
 
 
-def backend_array(backend):
+def backend_array(backend: Union[str, Module]):
     """ """
     backend_name = get_backend_name(backend)
-
     if backend_name == "numpy":
         return np.array
 
@@ -85,15 +94,40 @@ def backend_array(backend):
         return torch.tensor
 
     elif backend_name == "mlx":
-        return mlx.array
+        return mx.array
 
-    raise ValueError, backend
+    raise NotImplementedError
 
 
-def to_backend(backend, values, **kwargs):
+def to_backend(backend: Union[str, Module], values: np.ndarray, dtype = None, **kwargs):
     """ """
+    values = values if dtype is None else values.astype(dtype) 
     array_func = backend_array(backend)
     return array_func(values, **kwargs)
+
+
+def to_np(array):
+    """ """
+    if isinstance(array, tuple):
+        return [to_np(ar) for ar in array]
+    if isinstance(array, torch.Tensor):
+        return array.cpu().numpy()
+    return np.array(array)
+
+# \section backend math tools
+
+
+def backend_corr(backend, x, y):
+    """ """
+    backend = get_backend(backend)
+
+    x, y = x.T, y.T
+    x_demeaned = x - x.mean(axis=1, keepdims=True)
+    y_demeaned = y - y.mean(axis=1, keepdims=True)
+
+    x_norm = x_demeaned / backend.sqrt(backend.sum(x_demeaned ** 2, axis=1, keepdims=True))
+    y_norm = y_demeaned / backend.sqrt(backend.sum(y_demeaned ** 2, axis=1, keepdims=True))
+    return x_norm @ y_norm.T
 
 
 # ----------------------------------------------------------------------------# 
