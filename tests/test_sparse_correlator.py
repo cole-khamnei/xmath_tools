@@ -9,7 +9,9 @@ sys.path.insert(0, TEST_DIR_PATH + "/../../")
 
 import torch_math_tools as tmt
 
-#\section constants
+# ----------------------------------------------------------------------------# 
+# --------------------             Constants              --------------------# 
+# ----------------------------------------------------------------------------# 
 
 SAMPLE_DATA_DIR = os.path.join(TEST_DIR_PATH, "sample_data")
 SAMPLE_DTSERIES_PATH = os.path.join(SAMPLE_DATA_DIR, "dtseries.npy")
@@ -20,9 +22,13 @@ DIST_DIR = "/data/data7/network_control/projects/network_control/resources/brain
 SUBCORTEX_MASK_PATH = os.path.join(DIST_DIR, "subcortex_mask.npy")
 GEODESIC_MASK_PATH = os.path.join(DIST_DIR, f"geodesic_mask_10.npz")
 
-# \section main
+# ----------------------------------------------------------------------------# 
+# --------------------                Main                --------------------# 
+# ----------------------------------------------------------------------------# 
+
 
 def main():
+    """ """
 
     USE_SYNTHETIC = True
 
@@ -53,35 +59,9 @@ def main():
                                   block_size=block_size, symmetric=True, backend=backend)
 
 
-    # from infomap import Infomap
-
-    # # Create the Infomap instance
-    # infomap = Infomap(two_level=True, num_trials=1)
-
-    # # Add edges from the sparse matrix
-    # row, col = sc.nonzero()
-    # for r, c in zip(row, col):
-    #     weight = sc[r, c]
-    #     infomap.add_link(r, c, weight=weight)
-
-    # # Run the Infomap algorithm
-    # infomap.run()
-
-    # # Get the partition
-    # partition = infomap.get_modules()
-
-    # print(type(partition))
-    # print(len(partition))
-
-    # index = np.array(list(partition.keys()))
-    # values = np.array(list(partition.values()))
-
-    # print(index, len(index))
-    # print(values, len(values))
-    # np.save(SAMPLE_PARTITION_PATH, [index, values])
-
-
 if __name__ == '__main__':
     main()
 
-# \section end
+# ----------------------------------------------------------------------------# 
+# --------------------                End                 --------------------# 
+# ----------------------------------------------------------------------------#
