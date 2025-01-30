@@ -53,18 +53,6 @@ def main():
                                   block_size=block_size, symmetric=True, backend=backend)
 
 
-    # sc = tmt.matrix.Runner.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
-    #                            block_size=block_size, symmetric=True)
-
-    # assert False
-
-
-
-    # sc = tmt.matrix.SparseCorrelator.run(voxel_data[:, :], symmetric=True,
-    #                                      mask=geodesic_mask, exclude_index=subcortex_index,
-    #                                      sparsity_percent=0.1,
-    #                                      block_size=block_size)
-
     # from infomap import Infomap
 
     # # Create the Infomap instance

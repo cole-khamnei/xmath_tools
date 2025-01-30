@@ -114,7 +114,9 @@ def to_np(array):
         return array.cpu().numpy()
     return np.array(array)
 
-# \section backend math tools
+# ----------------------------------------------------------------------------# 
+# -------------------          Backend Math Tools          -------------------# 
+# ----------------------------------------------------------------------------# 
 
 
 def backend_corr(backend, x, y):
