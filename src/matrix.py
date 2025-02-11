@@ -173,7 +173,7 @@ class BlockAnalysis:
     @classmethod
     def run(cls, data, mask=None, exclude_index=None,
             block_size=4_000, use_torch=True, symmetric=False,
-            device=None, dtype="float32", **agg_params):
+            device=None, dtype="float32", leave=True, **agg_params):
         """
         TODO: added second data matrix and scan through both matrices
         TODO: add symmetry argument that scans through only half of matrix
@@ -197,7 +197,7 @@ class BlockAnalysis:
         n_blocks = int(np.ceil(data.shape[1] / block_size))
 
         total_blocks = n_blocks * (n_blocks + 1) // 2 if symmetric else n_blocks ** 2
-        pbar = tqdm(total=total_blocks * (block_size / 1000) ** 2, desc=f'{cls.__name__} Block Analysis')
+        pbar = tqdm(total=total_blocks * (block_size / 1000) ** 2, desc=f'{cls.__name__} Block Analysis', leave=leave)
 
         for a_count in range(n_blocks):
             a_start = a_count * block_size
