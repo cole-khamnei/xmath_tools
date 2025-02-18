@@ -15,10 +15,17 @@ indices = np.asarray(indices)
 
 ## Use numpy, torch, or a torch.mps object to find where indices[1] == 8000
 # Using np.where
-print(np.where(indices[1] == 8000)[0])
+np_w = np.where(indices[1] == 8000)[0]
 
 # Using torch.where
-print(torch.where(torch.from_numpy(indices)[1] == 8000)[0])
+t_cpu_w = torch.where(torch.from_numpy(indices)[1] == 8000)[0]
 
 # Using torch.where with an NPS object
-print(torch.where(torch.from_numpy(indices)[1].to(mps_device) == 8000)[0])
+t_mps_w = torch.where(torch.from_numpy(indices)[1].to(mps_device) == 8000)[0]
+
+
+print(np_w)
+print(t_cpu_w)
+print(t_mps_w)
+
+assert (t_mps_w.to(torch.device("cpu")) == t_cpu_w).all()

@@ -27,6 +27,7 @@ class BlockAnalysis:
 
         self.skip_diagonal = skip_diagonal
         self.symmetric = symmetric
+        self.preprocessed = False
 
         self.create_empty = lambda k=1: [self.backend.ones(0, **self.device_info) for _ in range(k)]
 
@@ -44,6 +45,10 @@ class BlockAnalysis:
         device_info = utils.get_device_info(backend, device)
 
         data = utils.to_backend(backend, data, dtype=dtype, **device_info)
+
+        # TODO: Fully test
+        data = aggregator.preprocess(data)
+
         if exclude_index is not None:
             exclude_index = utils.to_backend(backend, exclude_index, dtype="float16", **device_info)
 
@@ -101,6 +106,11 @@ class BlockAnalysis:
 
         return select_index
 
+    def preprocess(self, data):
+        """ Can be modified child classes"""
+        self.preprocessed = False
+        return data
+
     def core_func(self, A, B, a_index, b_index):
         """ """
         raise NotImplementedError
@@ -108,6 +118,10 @@ class BlockAnalysis:
     def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
         """ """
         raise NotImplementedError
+
+    def results(self):
+        return None
+
 
 # ----------------------------------------------------------------------------# 
 # --------------------                End                 --------------------# 

@@ -119,6 +119,16 @@ def to_np(array):
 # ----------------------------------------------------------------------------# 
 
 
+def backend_norm(backend, x):
+    """ """
+    backend = get_backend(backend)
+
+    x = x.T
+    x_demeaned = x - x.mean(axis=1, keepdims=True)
+    x_norm = x_demeaned / backend.sqrt(backend.sum(x_demeaned ** 2, axis=1, keepdims=True))
+    return x_norm.T
+
+
 def backend_corr(backend, x, y):
     """ """
     backend = get_backend(backend)

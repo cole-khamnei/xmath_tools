@@ -7,60 +7,6 @@ from tqdm.auto import tqdm
 from . import block_analysis
 from . import utils
 
-# ----------------------------------------------------------------------------# 
-# --------------------               Runner               --------------------# 
-# ----------------------------------------------------------------------------# 
-
-
-class Runner(block_analysis.BlockAnalysis):
-    """ 
-    Just runs a correlation to test speeds
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.corr_func = utils.backend_corr
-
-    def core_func(self, A, B, a_index, b_index):
-        """ """
-        M_chunk = self.corr_func(self.backend, A, B)
-        if a_index == b_index and self.skip_diagonal:
-            M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = -self.backend.inf
-
-        return M_chunk
-
-    def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
-        """ """
-        M_chunk = self.core_func(A, B, a_index, b_index)
-
-    def results(self):
-        return None
-
-
-class Maxxer(block_analysis.BlockAnalysis):
-    """ 
-    Just runs a correlation to test speeds
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.corr_func = utils.backend_corr
-        self.max = - self.backend.inf
-
-    def core_func(self, A, B, a_index, b_index):
-        """ """
-        M_chunk = self.corr_func(self.backend, A, B)
-        if a_index == b_index and self.skip_diagonal:
-            M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = -self.backend.inf
-
-        self.max = max(M_chunk.max(), self.max)
-
-        return M_chunk
-
-    def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
-        """ """
-        M_chunk = self.core_func(A, B, a_index, b_index)
-
-    def results(self):
-        return self.max
 
 # ----------------------------------------------------------------------------# 
 # -                Specific Aggregator And Correlator Classes                -# 
