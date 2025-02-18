@@ -30,11 +30,37 @@ class Runner(block_analysis.BlockAnalysis):
 
     def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
         """ """
-        backend = self.backend
         M_chunk = self.core_func(A, B, a_index, b_index)
 
     def results(self):
         return None
+
+
+class Maxxer(block_analysis.BlockAnalysis):
+    """ 
+    Just runs a correlation to test speeds
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.corr_func = utils.backend_corr
+        self.max = - self.backend.inf
+
+    def core_func(self, A, B, a_index, b_index):
+        """ """
+        M_chunk = self.corr_func(self.backend, A, B)
+        if a_index == b_index and self.skip_diagonal:
+            M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = -self.backend.inf
+
+        self.max = max(M_chunk.max(), self.max)
+
+        return M_chunk
+
+    def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
+        """ """
+        M_chunk = self.core_func(A, B, a_index, b_index)
+
+    def results(self):
+        return self.max
 
 # ----------------------------------------------------------------------------# 
 # -                Specific Aggregator And Correlator Classes                -# 
@@ -124,6 +150,8 @@ class SparseAggregator(block_analysis.BlockAnalysis):
         if len(chunk_ti) == 0:
             return
 
+        assert False, "fix where torch mps problems"
+
         chunk_tv = chunk_tv[chunk_ti]
         chunk_ri, chunk_ci = backend.unravel_index(chunk_ti, M_chunk.shape)
         chunk_ri += a_index.start
@@ -188,17 +216,31 @@ class ThresholdAggregator(block_analysis.BlockAnalysis):
             flat_triu = triu_index[0] * M_chunk.shape[0] + triu_index[1]
             select_index[flat_triu] = 0
 
+        """
+        todo: address problems on torch mps where :(
+        """
         chunk_tv = M_chunk.flatten()
-        select_index &= chunk_tv > self.threshold
+        select_index &= (chunk_tv > self.threshold)
 
-        chunk_ti = backend.where(select_index)[0]
+        # MPS WHERE DOESNT WORK :0
+        if self.device_info == {"device": "mps1"}:
+            chunk_ti_cpu = backend.where(select_index.to(torch.device("cpu")))[0]
+            chunk_ri_cpu, chunk_ci_cpu = backend.unravel_index(chunk_ti_cpu, M_chunk.shape)
+
+            chunk_ti = chunk_ti_cpu.to(torch.device("mps"))
+            chunk_ri = chunk_ri_cpu.to(torch.device("mps"))
+            chunk_ci = chunk_ci_cpu.to(torch.device("mps"))
+
+        else:
+            chunk_ti = backend.where(select_index)[0]
+            chunk_ri, chunk_ci = backend.unravel_index(chunk_ti, M_chunk.shape)
+
         if len(chunk_ti) == 0:
             return
 
-        chunk_tv = chunk_tv[chunk_ti]
-        chunk_ri, chunk_ci = backend.unravel_index(chunk_ti, M_chunk.shape)
+        chunk_tv_reduced = chunk_tv[chunk_ti]
 
-        self.cache_tv.append(chunk_tv)
+        self.cache_tv.append(chunk_tv_reduced)
         self.cache_ri.append(chunk_ri + a_index.start)  # off set row index by a start #TODO: check if this is right
         self.cache_ci.append(chunk_ci + b_index.start)  # off set col index by b start
 

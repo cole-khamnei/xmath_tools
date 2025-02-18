@@ -17,6 +17,7 @@ class SparseCorrelator(aggregators.SparseAggregator):
         M_chunk = self.corr_func(self.backend, A, B)
         if a_index == b_index and self.skip_diagonal:
             M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = -self.backend.inf
+            # M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = float("nan")
 
         return M_chunk
 
@@ -31,7 +32,9 @@ class ThresholdCorrelator(aggregators.ThresholdAggregator):
         """ """
         M_chunk = self.corr_func(self.backend, A, B)
         if a_index == b_index and self.skip_diagonal:
-            M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = -self.backend.inf
+            # M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = -self.backend.inf
+            M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = -3.2
+            # M_chunk[self.backend.eye(M_chunk.shape[0], dtype=bool)] = float("nan")
 
         return M_chunk
 

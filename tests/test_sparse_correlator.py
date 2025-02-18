@@ -7,7 +7,7 @@ import scipy
 TEST_DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TEST_DIR_PATH + "/../../")
 
-import torch_math_tools as tmt
+import xmath_tools as xmt
 
 # ----------------------------------------------------------------------------# 
 # --------------------             Constants              --------------------# 
@@ -31,14 +31,21 @@ def main():
     """ """
 
     USE_SYNTHETIC = True
+    np.random.seed(1)
 
     if os.path.exists(SAMPLE_DTSERIES_PATH) and not USE_SYNTHETIC:
         voxel_data = np.load(SAMPLE_DTSERIES_PATH)
         subcortex_index = np.load(SUBCORTEX_MASK_PATH)
         geodesic_mask = scipy.sparse.load_npz(GEODESIC_MASK_PATH)
-
     else:
         voxel_data = np.random.randn(900, 91_282)
+        # voxel_data = np.random.randn(900, 10_000).astype("float32")
+        # voxel_data = np.hstack([voxel_data, voxel_data])
+        # voxel_data = np.random.randn(900, 1000).astype("float32")
+        # z = np.corrcoef(voxel_data.T)
+        # z[z > 0.95] = -1
+        # print("Z max:", z.max())
+        
     
     subcortex_index, geodesic_mask = None, None
 
@@ -47,16 +54,31 @@ def main():
     print(voxel_data.shape)
 
     backend = "torch"
-    # backend = "numpy"
+    # backend = "numpy" 
 
-    # sc = tmt.block_aggregators.Runner.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
+    # sc = xmt.block_aggregators.Runner.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
     #                                      block_size=block_size, symmetric=True, backend=backend)
 
-    # sc = tmt.SparseCorrelator.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
+    # sc = xmt.SparseCorrelator.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
     #                               block_size=block_size, symmetric=True, backend=backend)
 
-    sc = tmt.ThresholdCorrelator.run(voxel_data[:, :], threshold=0.1, mask=geodesic_mask, exclude_index=subcortex_index,
-                                  block_size=block_size, symmetric=True, backend=backend)
+    # torch MPS bug :0
+    # https://github.com/pytorch/pytorch/issues/122916
+
+    threshold = 0.1
+    sc = xmt.ThresholdCorrelator.run(voxel_data[:, :], threshold=threshold, mask=geodesic_mask, device="mps",
+                                     exclude_index=subcortex_index, block_size=block_size,
+                                     symmetric=True, backend=backend, skip_diagonal=True)
+
+    # sc = xmt.aggregators.Maxxer.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
+    #                                      block_size=block_size, symmetric=False, backend=backend)
+    # print(sc)
+
+
+    print("mat max:", sc.max(), "mat min:", sc.min(), "data min:", sc.data.min(), "len data", len(sc.data))
+
+    assert sc.max() <= 1
+    assert sc.data.min() >= threshold
 
 
 if __name__ == '__main__':
