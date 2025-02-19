@@ -1,4 +1,5 @@
-from .src import matrix
-from .src import *
+from .src import aggregators
+from .src import correlators
+from .src import block_analysis
 
-from .src.matrix import *
+from .src.correlators import *

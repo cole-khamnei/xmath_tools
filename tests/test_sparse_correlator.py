@@ -7,9 +7,11 @@ import scipy
 TEST_DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TEST_DIR_PATH + "/../../")
 
-import torch_math_tools as tmt
+import xmath_tools as xmt
 
-#\section constants
+# ----------------------------------------------------------------------------# 
+# --------------------             Constants              --------------------# 
+# ----------------------------------------------------------------------------# 
 
 SAMPLE_DATA_DIR = os.path.join(TEST_DIR_PATH, "sample_data")
 SAMPLE_DTSERIES_PATH = os.path.join(SAMPLE_DATA_DIR, "dtseries.npy")
@@ -20,56 +22,68 @@ DIST_DIR = "/data/data7/network_control/projects/network_control/resources/brain
 SUBCORTEX_MASK_PATH = os.path.join(DIST_DIR, "subcortex_mask.npy")
 GEODESIC_MASK_PATH = os.path.join(DIST_DIR, f"geodesic_mask_10.npz")
 
-# \section main
+# ----------------------------------------------------------------------------# 
+# --------------------                Main                --------------------# 
+# ----------------------------------------------------------------------------# 
+
 
 def main():
-    voxel_data = np.load(SAMPLE_DTSERIES_PATH)
+    """ """
 
-    subcortex_index = np.load(SUBCORTEX_MASK_PATH)
-    geodesic_mask = scipy.sparse.load_npz(GEODESIC_MASK_PATH)
+    USE_SYNTHETIC = True
+    np.random.seed(1)
+
+    if os.path.exists(SAMPLE_DTSERIES_PATH) and not USE_SYNTHETIC:
+        voxel_data = np.load(SAMPLE_DTSERIES_PATH)
+        subcortex_index = np.load(SUBCORTEX_MASK_PATH)
+        geodesic_mask = scipy.sparse.load_npz(GEODESIC_MASK_PATH)
+    else:
+        voxel_data = np.random.randn(900, 91_282)
+        # voxel_data = np.random.randn(900, 10_000).astype("float32")
+        # voxel_data = np.hstack([voxel_data, voxel_data])
+        # voxel_data = np.random.randn(900, 1000).astype("float32")
+        # z = np.corrcoef(voxel_data.T)
+        # z[z > 0.95] = -1
+        # print("Z max:", z.max())
+        
+    
+    subcortex_index, geodesic_mask = None, None
 
     block_size = 5_000
     print(f"BLOCK SIZE :: {block_size}")
     print(voxel_data.shape)
 
-    # sc = tmt.matrix.Runner.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
-    #                            block_size=block_size, symmetric=True)
+    backend = "torch"
+    # backend = "numpy" 
 
-    # assert False
-    sc = tmt.matrix.SparseCorrelator.run(voxel_data[:, :], symmetric=True,
-                                         mask=geodesic_mask, exclude_index=subcortex_index,
-                                         sparsity_percent=0.1,
-                                         block_size=block_size)
+    # sc = xmt.block_aggregators.Runner.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
+    #                                      block_size=block_size, symmetric=True, backend=backend)
 
-    # from infomap import Infomap
+    # sc = xmt.SparseCorrelator.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
+    #                               block_size=block_size, symmetric=True, backend=backend)
 
-    # # Create the Infomap instance
-    # infomap = Infomap(two_level=True, num_trials=1)
+    # torch MPS bug :0
+    # https://github.com/pytorch/pytorch/issues/122916
 
-    # # Add edges from the sparse matrix
-    # row, col = sc.nonzero()
-    # for r, c in zip(row, col):
-    #     weight = sc[r, c]
-    #     infomap.add_link(r, c, weight=weight)
+    threshold = 0.1
+    sc = xmt.ThresholdCorrelator.run(voxel_data[:, :], threshold=threshold, mask=geodesic_mask, device="mps",
+                                     exclude_index=subcortex_index, block_size=block_size,
+                                     symmetric=True, backend=backend, skip_diagonal=True)
 
-    # # Run the Infomap algorithm
-    # infomap.run()
+    # sc = xmt.aggregators.Maxxer.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
+    #                                      block_size=block_size, symmetric=False, backend=backend)
+    # print(sc)
 
-    # # Get the partition
-    # partition = infomap.get_modules()
 
-    # print(type(partition))
-    # print(len(partition))
-
-    # index = np.array(list(partition.keys()))
-    # values = np.array(list(partition.values()))
-
-    # print(index, len(index))
-    # print(values, len(values))
-    # np.save(SAMPLE_PARTITION_PATH, [index, values])
+    print("mat max:", sc.max(), "mat min:", sc.min(), "data min:", sc.data.min(), "len data", len(sc.data))
+    
+    assert sc.max() <= 1
+    assert sc.data.min() >= threshold
 
 
 if __name__ == '__main__':
     main()
 
-# \section end
+# ----------------------------------------------------------------------------# 
+# --------------------                End                 --------------------# 
+# ----------------------------------------------------------------------------#
