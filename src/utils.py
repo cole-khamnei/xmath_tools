@@ -118,6 +118,13 @@ def to_np(array):
 # -------------------          Backend Math Tools          -------------------# 
 # ----------------------------------------------------------------------------# 
 
+def backend_triu_indices(backend, shape, offset=0):
+    """ """
+    if check_backend(backend, "torch"):
+        return backend.triu_indices(*shape, offset=offset) 
+    
+    return backend.triu_indices(shape[0], k=offset)
+
 
 def backend_norm(backend, x):
     """ """
@@ -141,6 +148,47 @@ def backend_corr(backend, x, y):
     y_norm = y_demeaned / backend.sqrt(backend.sum(y_demeaned ** 2, axis=1, keepdims=True))
     return x_norm @ y_norm.T
 
+
+# \section MPS Torch Safe Actions
+
+def needs_MPS_safety(backend, device_info):
+    """ """
+    return check_backend(backend, "torch") and device_info == {"device": "mps"}
+
+
+def MPS_safe_where(backend, device_info, array):
+    """ only works for flat arrays"""
+    if needs_MPS_safety(backend, device_info):
+        cpu_array = array.to(backend.device("cpu"))
+        return backend.where(cpu_array)[0].to(torch.device("mps"))
+
+    return backend.where(array)[0]
+
+
+def MPS_safe_unravel_index(backend, device_info, array, shape):
+    """ """
+    if needs_MPS_safety(backend, device_info):
+        ri_cpu, ci_cpu = backend.unravel_index(array.to(backend.device("cpu")), shape)
+        return ri_cpu.to(torch.device("mps")), ci_cpu.to(torch.device("mps"))
+
+    return backend.unravel_index(array, shape)
+
+
+def MPS_safe_topk(backend, device_info, array, k, axis=0):
+    """ """
+    if needs_MPS_safety(backend, device_info):
+        cpu_array = array.to(backend.device("cpu"))
+        top_values_cpu, top_index_cpu = torch.topk(cpu_array, k, dim=axis)
+        return top_values_cpu.to(torch.device("mps")), top_index_cpu.to(torch.device("mps"))
+
+    elif check_backend(backend, "torch"):
+        return torch.topk(array, k, dim=axis)
+
+    elif check_backend(backend, "numpy"):
+        return (np.partition(array, -k, axis=axis)[-k:], np.argpartition(array, -k, axis=axis)[-k:])
+
+    else:
+        raise NotImplementedError
 
 # ----------------------------------------------------------------------------# 
 # --------------------                End                 --------------------# 

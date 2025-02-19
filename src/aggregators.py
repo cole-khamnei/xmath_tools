@@ -31,14 +31,6 @@ class SparseAggregator(block_analysis.BlockAnalysis):
         else:
             self.top_n = int(np.ceil(n_items * self.sparsity_frac))
 
-        if utils.check_backend(kwargs["backend"], "torch"):
-            self.top_k = lambda values, k, axis=0: torch.topk(values, k, dim=axis)
-        elif utils.check_backend(kwargs["backend"], "numpy"):
-            self.top_k = lambda values, k, axis=0: (np.partition(values, -k, axis=axis)[-k:],
-                                                    np.argpartition(values, -k, axis=axis)[-k:])
-        else:
-            raise NotImplementedError
-
         self.create_empty = lambda k=1: [self.backend.ones(0, **self.device_info) for _ in range(k)]
 
         self.min_tv = -self.backend.inf
@@ -54,7 +46,9 @@ class SparseAggregator(block_analysis.BlockAnalysis):
         self.cache_tv, self.cache_ri, self.cache_ci = [], [], []
 
         if len(self.compare_tv) > self.top_n:
-            self.compare_tv, update_ti = self.top_k(self.compare_tv, self.top_n)
+            # self.compare_tv, update_ti = self.top_k(self.compare_tv, self.top_n)
+            self.compare_tv, update_ti = utils.MPS_safe_topk(backend, self.device_info, self.compare_tv, self.top_n)
+
             self.compare_ri = self.compare_ri[update_ti]
             self.compare_ci = self.compare_ci[update_ti]
             self.min_tv = self.compare_tv[-1]
@@ -85,21 +79,24 @@ class SparseAggregator(block_analysis.BlockAnalysis):
 
         # TODO: Fix symmetry:
         if self.symmetric and a_index == b_index:
-            triu_index = backend.triu_indices(*M_chunk.shape, offset=1)
+            # triu_index = backend.triu_indices(*M_chunk.shape, offset=1)
+            triu_index = utils.backend_triu_indices(backend, M_chunk.shape, offset=1)
             flat_triu = triu_index[0] * M_chunk.shape[0] + triu_index[1]
             threshold_chunk_tv_index[flat_triu] = 0
 
         chunk_tv = M_chunk.flatten()
         threshold_chunk_tv_index &= chunk_tv > self.min_tv
 
-        chunk_ti = backend.where(threshold_chunk_tv_index)[0]
+        chunk_ti = utils.MPS_safe_where(backend, self.device_info, threshold_chunk_tv_index)
+        chunk_ri, chunk_ci = utils.MPS_safe_unravel_index(backend, self.device_info, chunk_ti, M_chunk.shape)
+
+        # chunk_ti = backend.where(threshold_chunk_tv_index)[0]
         if len(chunk_ti) == 0:
             return
 
-        assert False, "fix where torch mps problems"
-
         chunk_tv = chunk_tv[chunk_ti]
-        chunk_ri, chunk_ci = backend.unravel_index(chunk_ti, M_chunk.shape)
+
+        # chunk_ri, chunk_ci = backend.unravel_index(chunk_ti, M_chunk.shape)
         chunk_ri += a_index.start
         chunk_ci += b_index.start
 
@@ -156,30 +153,18 @@ class ThresholdAggregator(block_analysis.BlockAnalysis):
 
         M_chunk = self.core_func(A, B, a_index, b_index)
 
-        # TODO: Fix symmetry:
+        # TODO: Add Numpy offset argument version:
         if self.symmetric and a_index == b_index:
-            triu_index = backend.triu_indices(*M_chunk.shape, offset=1)
+            # triu_index = backend.triu_indices(*M_chunk.shape, offset=1)
+            triu_index = utils.backend_triu_indices(backend, M_chunk.shape, offset=1)
             flat_triu = triu_index[0] * M_chunk.shape[0] + triu_index[1]
             select_index[flat_triu] = 0
 
-        """
-        todo: address problems on torch mps where :(
-        """
         chunk_tv = M_chunk.flatten()
         select_index &= (chunk_tv > self.threshold)
 
-        # MPS WHERE DOESNT WORK :0
-        if self.device_info == {"device": "mps1"}:
-            chunk_ti_cpu = backend.where(select_index.to(torch.device("cpu")))[0]
-            chunk_ri_cpu, chunk_ci_cpu = backend.unravel_index(chunk_ti_cpu, M_chunk.shape)
-
-            chunk_ti = chunk_ti_cpu.to(torch.device("mps"))
-            chunk_ri = chunk_ri_cpu.to(torch.device("mps"))
-            chunk_ci = chunk_ci_cpu.to(torch.device("mps"))
-
-        else:
-            chunk_ti = backend.where(select_index)[0]
-            chunk_ri, chunk_ci = backend.unravel_index(chunk_ti, M_chunk.shape)
+        chunk_ti = utils.MPS_safe_where(backend, self.device_info, select_index)
+        chunk_ri, chunk_ci = utils.MPS_safe_unravel_index(backend, self.device_info, chunk_ti, M_chunk.shape)
 
         if len(chunk_ti) == 0:
             return

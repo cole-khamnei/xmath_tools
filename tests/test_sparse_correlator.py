@@ -76,7 +76,7 @@ def main():
 
 
     print("mat max:", sc.max(), "mat min:", sc.min(), "data min:", sc.data.min(), "len data", len(sc.data))
-
+    
     assert sc.max() <= 1
     assert sc.data.min() >= threshold
 

@@ -71,13 +71,15 @@ class Maxxer(Correlator, block_analysis.BlockAnalysis):
 class SparseCorrelator(Correlator, aggregators.SparseAggregator):
     """ """
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        Correlator.__init__(self, *args, **kwargs)
+        aggregators.SparseAggregator.__init__(self, *args, **kwargs)
 
 
 class ThresholdCorrelator(Correlator, aggregators.ThresholdAggregator):
     """ """
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        Correlator.__init__(self, *args, **kwargs)
+        aggregators.ThresholdAggregator.__init__(self, *args, **kwargs)
 
 
 # ----------------------------------------------------------------------------# 
