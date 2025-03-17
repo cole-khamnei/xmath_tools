@@ -191,6 +191,126 @@ class ThresholdAggregator(block_analysis.BlockAnalysis):
         return scipy.sparse.csr_matrix((tv, (ri.astype(int), ci.astype(int))), shape=self.shape)
 
 
+# \section pair aggregator
+
+class PairComparator(block_analysis.BlockAnalysis):
+    """
+    keeps running list of coordinates of top p percent (or top n) sparse connections:
+
+    """
+    def __init__(self, *args, threshold=0.1, skip_diagonal=False, axis=None, **kwargs):
+        super().__init__(*args, skip_diagonal=False, **kwargs)
+
+        self.threshold = threshold
+        self.axis = axis
+        self.compare_values = []
+        self.compare_counts = []
+
+        # self.stds_0 = []
+        # self.stds_1 = []
+
+    def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
+        """ """
+        backend = self.backend
+
+        M_chunk_0 = self.core_func(A[:, :, 0], B[:, :, 0], a_index, b_index)
+        M_chunk_1 = self.core_func(A[:, :, 1], B[:, :, 1], a_index, b_index)
+
+        if self.symmetric and a_index == b_index:
+            compare_count = (M_chunk_0.shape[0] * (M_chunk_0.shape[0] + 1)) / 2
+        else:
+            compare_count = M_chunk_0.shape[0] * M_chunk_0.shape[1]
+
+        self.compare_values += [self.compare(M_chunk_0, M_chunk_1, axis=self.axis)]
+        self.compare_counts += [compare_count]
+        # self.stds_0 += [self.backend.std(M_chunk_0)]
+        # self.stds_1 += [self.backend.std(M_chunk_1)]
+
+    def results(self):
+        self.compare_values = self.backend.hstack(self.compare_values)
+        self.compare_counts = np.hstack(self.compare_counts)
+
+        compare_values = utils.to_np(self.compare_values)
+        
+        weighted_values = compare_values * self.compare_counts / np.sum(self.compare_counts)
+        weighted_values = np.round(weighted_values, 5)
+
+        # print(self.backend.hstack(self.stds_0))
+        # print(self.backend.hstack(self.stds_1))
+        return np.sum(weighted_values)
+
+
+class PairComparatorAxis(block_analysis.BlockAnalysis):
+    """
+    keeps running list of coordinates of top p percent (or top n) sparse connections:
+
+    """
+    def __init__(self, *args, threshold=0.1, skip_diagonal=False, axis=None, **kwargs):
+        super().__init__(*args, skip_diagonal=False, **kwargs)
+
+        self.threshold = threshold
+        self.axis = axis
+        
+        self.caches_created = False
+        self.total_n = args[0][0].shape[0]
+        self.compare_values = -2 * self.backend.ones(self.total_n, **self.device_info)
+
+        self.block_ri = 0
+        self.block_ci = 0
+
+
+    def init_caches(self, A):
+        """ """
+        if self.caches_created:
+            return
+
+        self.block_size = A.shape[1]
+        n_blocks = int(np.ceil(self.total_n / self.block_size))
+
+        self.block_shape = (n_blocks, n_blocks)
+        self.block_cache_0 = [[None] * self.block_shape[1]] * self.block_shape[0]
+        self.block_cache_1 = [[None] * self.block_shape[1]] * self.block_shape[0]
+        self.caches_created = True
+
+    def __call__(self, A, B, a_index, b_index, mask=None, exclude_index=None):
+        """ """
+        backend = self.backend
+
+        self.init_caches(A)
+
+        M_chunk_0 = self.core_func(A[:, :, 0], B[:, :, 0], a_index, b_index)
+        M_chunk_1 = self.core_func(A[:, :, 1], B[:, :, 1], a_index, b_index)
+
+        if self.symmetric and a_index == b_index:
+            raise NotImplementedError
+        else:
+            self.block_cache_0[self.block_ri][self.block_ci] = M_chunk_0
+            self.block_cache_1[self.block_ri][self.block_ci] = M_chunk_1
+
+            self.block_ci += 1
+            if self.block_ci >= self.block_shape[1]:
+
+                block_row_0 = self.backend.hstack(self.block_cache_0[self.block_ri])
+                block_row_1 = self.backend.hstack(self.block_cache_1[self.block_ri])
+
+                # print(block_row_0.shape)
+                row_r = self.compare(block_row_0, block_row_1, axis=self.axis)
+                
+                # self.compare_values.append(row_r)
+                self.compare_values[self.block_ri * self.block_size:(self.block_ri + 1) * self.block_size] = row_r
+
+                self.block_cache_0[self.block_ri] = None
+                self.block_cache_1[self.block_ri] = None
+
+                self.block_ci = 0
+                self.block_ri += 1
+        # print(self.block_ri, self.block_ci)
+
+
+    def results(self):
+        return utils.to_np(self.compare_values)
+
+
 # ----------------------------------------------------------------------------# 
 # --------------------                End                 --------------------# 
 # ----------------------------------------------------------------------------#

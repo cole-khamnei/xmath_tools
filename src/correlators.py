@@ -18,9 +18,9 @@ class Correlator:
         self.preprocessed = True
         return data
 
-    def core_func(self, A, B, a_index, b_index):
+    def core_func(self, A, B, a_index=None, b_index=None, preprocess_overide=False):
         """ """
-        if self.preprocessed:
+        if self.preprocessed and not preprocess_overide:
             M_chunk = A.T @ B
         else:
             M_chunk = self.corr_func(self.backend, A, B)
@@ -80,6 +80,72 @@ class ThresholdCorrelator(Correlator, aggregators.ThresholdAggregator):
     def __init__(self, *args, **kwargs):
         Correlator.__init__(self, *args, **kwargs)
         aggregators.ThresholdAggregator.__init__(self, *args, **kwargs)
+
+
+
+class PairCorrelator(Correlator, aggregators.PairComparator):
+    """ """
+    def __init__(self, *args, **kwargs):
+        Correlator.__init__(self, *args, **kwargs)
+        aggregators.PairComparator.__init__(self, *args, **kwargs)
+
+    def preprocess(self, data):
+        """ norm data so correlation is just multiplication """
+
+        d1, d2 = data[:, :, 0], data[:, :, 1]
+        d1 = utils.backend_norm(self.backend, d1)
+        d2 = utils.backend_norm(self.backend, d2)
+        data = self.backend.stack((d1, d2), axis=2)
+        self.preprocessed = True
+        return data
+
+    def compare(self, d1, d2, axis=None):
+        """ """
+        if axis is None:
+            r = self.core_func(d1.reshape(-1, 1), d2.reshape(-1, 1), preprocess_overide=True)
+        else:
+            raise NotImplementedError
+
+        return r[0]
+
+
+class PairCorrelatorAxis(Correlator, aggregators.PairComparatorAxis):
+    """ """
+    def __init__(self, *args, **kwargs):
+        Correlator.__init__(self, *args, **kwargs)
+        aggregators.PairComparatorAxis.__init__(self, *args, **kwargs)
+
+    def preprocess(self, data):
+        """ norm data so correlation is just multiplication """
+
+        d1, d2 = data[:, :, 0], data[:, :, 1]
+        d1 = utils.backend_norm(self.backend, d1)
+        d2 = utils.backend_norm(self.backend, d2)
+        data = self.backend.stack((d1, d2), axis=2)
+        self.preprocessed = True
+        return data
+
+    def compare(self, d1, d2, axis=None):
+        """ """
+        if axis is None:
+            d1, d2 = d1.reshape(1, -1), d2.reshape(1, -1)
+
+        d1_normed = utils.backend_norm(self.backend, d1.T)
+        d2_normed = utils.backend_norm(self.backend, d2.T)
+        r_axis = (d1_normed * d2_normed).sum(axis=0)
+
+        return r_axis
+
+
+def pair_correlation(*args, **kwargs):
+    """ """
+    if kwargs["axis"] is None:
+        pair_correlator = PairCorrelator
+        kwargs["block_size"] = min(kwargs.get("block_size", 2000), 2000)
+    else:
+        pair_correlator = PairCorrelatorAxis
+
+    return pair_correlator.run(*args, **kwargs)
 
 
 # ----------------------------------------------------------------------------# 

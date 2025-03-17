@@ -3,6 +3,7 @@ import sys
 
 import numpy as np
 import scipy
+import torch
 
 TEST_DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TEST_DIR_PATH + "/../../")
@@ -54,6 +55,7 @@ def main():
     print(voxel_data.shape)
 
     backend = "torch"
+    device = "mps" if torch.backends.mps.is_available() else "cuda"
     # backend = "numpy" 
 
     # sc = xmt.block_aggregators.Runner.run(voxel_data[:, :], mask=geodesic_mask, exclude_index=subcortex_index,
@@ -66,7 +68,7 @@ def main():
     # https://github.com/pytorch/pytorch/issues/122916
 
     threshold = 0.1
-    sc = xmt.ThresholdCorrelator.run(voxel_data[:, :], threshold=threshold, mask=geodesic_mask, device="mps",
+    sc = xmt.ThresholdCorrelator.run(voxel_data[:, :], threshold=threshold, mask=geodesic_mask, device=device,
                                      exclude_index=subcortex_index, block_size=block_size,
                                      symmetric=True, backend=backend, skip_diagonal=True)
 
