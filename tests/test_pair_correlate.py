@@ -62,9 +62,9 @@ class TestCorrelationAggregators(unittest.TestCase):
         pair_data = np.stack((SMALL_VOXEL_DATA, SMALL_VOXEL_DATA_2), axis=2)
         # pair_data = np.stack((LARGE_VOXEL_DATA, LARGE_VOXEL_DATA_2), axis=2)
 
-        r = xmt.pair_correlation(pair_data, axis=1,
+        r = xmt.pair_correlation(pair_data, axis=None, threshold=0.1,
                                  mask=None, exclude_index=None, leave=True,
-                                 block_size=2000, symmetric=False,
+                                 block_size=5000, symmetric=False,
                                  backend="torch", device=GPU_STR)
         print("Final r", r)
 

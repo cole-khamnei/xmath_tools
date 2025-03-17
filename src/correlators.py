@@ -2,6 +2,8 @@ from . import block_analysis
 from . import aggregators
 from . import utils
 
+import gc
+import torch
 
 #\section Correlator class
 
@@ -141,11 +143,16 @@ def pair_correlation(*args, **kwargs):
     """ """
     if kwargs["axis"] is None:
         pair_correlator = PairCorrelator
-        kwargs["block_size"] = min(kwargs.get("block_size", 2000), 2000)
     else:
+        kwargs["block_size"] = min(kwargs.get("block_size", 2000), 2000)
         pair_correlator = PairCorrelatorAxis
 
-    return pair_correlator.run(*args, **kwargs)
+    results = pair_correlator.run(*args, **kwargs)
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    return results
 
 
 # ----------------------------------------------------------------------------# 

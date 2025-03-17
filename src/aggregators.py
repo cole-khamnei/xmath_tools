@@ -198,7 +198,7 @@ class PairComparator(block_analysis.BlockAnalysis):
     keeps running list of coordinates of top p percent (or top n) sparse connections:
 
     """
-    def __init__(self, *args, threshold=0.1, skip_diagonal=False, axis=None, **kwargs):
+    def __init__(self, *args, threshold=None, skip_diagonal=False, axis=None, **kwargs):
         super().__init__(*args, skip_diagonal=False, **kwargs)
 
         self.threshold = threshold
@@ -215,6 +215,10 @@ class PairComparator(block_analysis.BlockAnalysis):
 
         M_chunk_0 = self.core_func(A[:, :, 0], B[:, :, 0], a_index, b_index)
         M_chunk_1 = self.core_func(A[:, :, 1], B[:, :, 1], a_index, b_index)
+
+        if self.threshold is not None:
+            M_chunk_0[M_chunk_0 <= self.threshold] = 0
+            M_chunk_1[M_chunk_1 <= self.threshold] = 0
 
         if self.symmetric and a_index == b_index:
             compare_count = (M_chunk_0.shape[0] * (M_chunk_0.shape[0] + 1)) / 2
@@ -245,7 +249,7 @@ class PairComparatorAxis(block_analysis.BlockAnalysis):
     keeps running list of coordinates of top p percent (or top n) sparse connections:
 
     """
-    def __init__(self, *args, threshold=0.1, skip_diagonal=False, axis=None, **kwargs):
+    def __init__(self, *args, threshold=None, skip_diagonal=False, axis=None, **kwargs):
         super().__init__(*args, skip_diagonal=False, **kwargs)
 
         self.threshold = threshold
@@ -281,6 +285,10 @@ class PairComparatorAxis(block_analysis.BlockAnalysis):
         M_chunk_0 = self.core_func(A[:, :, 0], B[:, :, 0], a_index, b_index)
         M_chunk_1 = self.core_func(A[:, :, 1], B[:, :, 1], a_index, b_index)
 
+        if self.threshold is not None:
+            M_chunk_0[M_chunk_0 <= self.threshold] = 0
+            M_chunk_1[M_chunk_1 <= self.threshold] = 0
+
         if self.symmetric and a_index == b_index:
             raise NotImplementedError
         else:
@@ -293,7 +301,6 @@ class PairComparatorAxis(block_analysis.BlockAnalysis):
                 block_row_0 = self.backend.hstack(self.block_cache_0[self.block_ri])
                 block_row_1 = self.backend.hstack(self.block_cache_1[self.block_ri])
 
-                # print(block_row_0.shape)
                 row_r = self.compare(block_row_0, block_row_1, axis=self.axis)
                 
                 # self.compare_values.append(row_r)
@@ -301,6 +308,9 @@ class PairComparatorAxis(block_analysis.BlockAnalysis):
 
                 self.block_cache_0[self.block_ri] = None
                 self.block_cache_1[self.block_ri] = None
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
                 self.block_ci = 0
                 self.block_ri += 1
