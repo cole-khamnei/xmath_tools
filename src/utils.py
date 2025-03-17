@@ -7,15 +7,12 @@ Module = None
 
 VALID_BACKENDS = {"numpy": np}
 
-try:
-    import torch
-    VALID_BACKENDS["torch"] = torch
-    USE_CUDA = torch.cuda.is_available()
-    USE_MPS = torch.mps.is_available()
-    DEFAULT_DEVICE = "cuda" if USE_CUDA else "mps" if USE_MPS else "cpu"
+import torch
+VALID_BACKENDS["torch"] = torch
+USE_CUDA = torch.cuda.is_available()
+USE_MPS = torch.mps.is_available()
+DEFAULT_DEVICE = "cuda" if USE_CUDA else "mps" if USE_MPS else "cpu"
 
-except:
-    pass
 
 try:
     import mlx.core as mx
